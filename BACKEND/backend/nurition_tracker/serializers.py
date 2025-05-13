@@ -65,5 +65,15 @@ class FoodLogSummarySerializer(serializers.ModelSerializer):
             'name',
             'category',
             'calories',
-            'meal_log_time'
+            'meal_log_time',
+            'protein_g',
+            'carbohydrates_total_g',
+            'fat_total_g',
+            'sugar_g',
+            'fiber_g',
+            'potassium_mg',
+            'sodium_g',
+            'cholesterol_mg',
+            'serving_size',
+            'fat_saturated'
         ]    

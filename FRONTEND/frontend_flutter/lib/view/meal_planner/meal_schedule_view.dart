@@ -21,7 +21,7 @@ class _MealScheduleViewState extends State<MealScheduleView> {
   CalendarAgendaController _calendarAgendaControllerAppBar =
       CalendarAgendaController();
 
-  late DateTime _selectedDateAppBBar;
+  DateTime selectedDate = DateTime.now();
   bool isLoading = false;
 
   // Data structures for meals
@@ -68,10 +68,23 @@ class _MealScheduleViewState extends State<MealScheduleView> {
   @override
   void initState() {
     super.initState();
-    _selectedDateAppBBar = DateTime.now();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (widget.userData == null || widget.userData!['UserID'] == null) {
+        _showError('Please log in to view meal schedule');
+        Navigator.pop(context);
+        return;
+      }
+      fetchMealsByDate(selectedDate);
+    });
+  }
 
-    // Initial data fetch for current date
-    fetchMealsByDate(_selectedDateAppBBar);
+  // Helper method to show error messages
+  void _showError(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   // Format date to YYYY-MM-DD for API calls
@@ -91,6 +104,8 @@ class _MealScheduleViewState extends State<MealScheduleView> {
 
   // Fetch all meals for a specific date
   Future<void> fetchMealsByDate(DateTime date) async {
+    if (!mounted) return;
+
     setState(() {
       isLoading = true;
       // Clear previous data
@@ -100,15 +115,25 @@ class _MealScheduleViewState extends State<MealScheduleView> {
       breakfastCalories = 0;
       lunchCalories = 0;
       dinnerCalories = 0;
+      // Reset nutrition array
+      nutritionArr.forEach((item) {
+        item["value"] = "0";
+      });
     });
 
     try {
       final formattedDate = _formatDateForApi(date);
-      final userId = widget.userData?['UserID'] ?? 1;
+      final userId = widget.userData?['UserID'];
 
-      print("Using user ID: $userId"); // Add logging
+      if (userId == null) {
+        print("Error: No user ID found in userData");
+        _showError('Error: User ID not found');
+        return;
+      }
+
+      print("Fetching meals for user ID: $userId and date: $formattedDate");
       final url = ApiConstants.mealsDataByDate(userId, formattedDate);
-      print("Fetching meals from: $url"); // Add logging
+      print("Fetching meals from: $url");
 
       final response = await http.get(
         Uri.parse(url),
@@ -117,9 +142,24 @@ class _MealScheduleViewState extends State<MealScheduleView> {
         },
       );
 
+      if (!mounted) return;
+
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         print("Fetched meal data: $data");
+
+        // Check if there are any meals for this date
+        bool hasMeals = (data['Breakfast']?.isNotEmpty ?? false) ||
+            (data['Lunch']?.isNotEmpty ?? false) ||
+            (data['Dinner']?.isNotEmpty ?? false);
+
+        if (!hasMeals) {
+          setState(() {
+            isLoading = false;
+            // Keep arrays empty and nutrition values at 0
+          });
+          return;
+        }
 
         setState(() {
           // Process breakfast meals
@@ -133,7 +173,7 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                 "protein": meal['protein_g'],
                 "carbs": meal['carbohydrates_total_g'],
                 "fat": meal['fat_total_g'],
-                "category": "Breakfast"
+                "category": meal['category'] ?? "Breakfast"
               });
               breakfastCalories += (meal['calories'] as num).toInt();
             }
@@ -150,7 +190,7 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                 "protein": meal['protein_g'],
                 "carbs": meal['carbohydrates_total_g'],
                 "fat": meal['fat_total_g'],
-                "category": "Lunch"
+                "category": meal['category'] ?? "Lunch"
               });
               lunchCalories += (meal['calories'] as num).toInt();
             }
@@ -167,57 +207,58 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                 "protein": meal['protein_g'],
                 "carbs": meal['carbohydrates_total_g'],
                 "fat": meal['fat_total_g'],
-                "category": "Dinner"
+                "category": meal['category'] ?? "Dinner"
               });
               dinnerCalories += (meal['calories'] as num).toInt();
             }
           }
 
-          // Update nutrition summary
-          int totalCalories = data['total_calories'] != null
-              ? (data['total_calories'] as num).toInt()
-              : 0;
-          double totalProtein = 0;
-          double totalFat = 0;
-          double totalCarbs = 0;
+          // Update nutrition summary only if we have meals
+          if (hasMeals) {
+            int totalCalories = data['total_calories'] != null
+                ? (data['total_calories'] as num).toInt()
+                : 0;
+            double totalProtein = 0;
+            double totalFat = 0;
+            double totalCarbs = 0;
 
-          // Calculate total nutrition values from all meals
-          for (var category in [
-            data['Breakfast'],
-            data['Lunch'],
-            data['Dinner']
-          ]) {
-            if (category != null) {
-              for (var meal in category) {
-                totalProtein += (meal['protein_g'] as num).toDouble();
-                totalFat += (meal['fat_total_g'] as num).toDouble();
-                totalCarbs += (meal['carbohydrates_total_g'] as num).toDouble();
+            // Calculate total nutrition values from all meals
+            for (var category in [
+              data['Breakfast'],
+              data['Lunch'],
+              data['Dinner']
+            ]) {
+              if (category != null) {
+                for (var meal in category) {
+                  totalProtein += (meal['protein_g'] as num).toDouble();
+                  totalFat += (meal['fat_total_g'] as num).toDouble();
+                  totalCarbs +=
+                      (meal['carbohydrates_total_g'] as num).toDouble();
+                }
               }
             }
-          }
 
-          // Update nutrition array with calculated values
-          nutritionArr[0]["value"] = totalCalories.toString();
-          nutritionArr[1]["value"] = totalProtein.toStringAsFixed(1);
-          nutritionArr[2]["value"] = totalFat.toStringAsFixed(1);
-          nutritionArr[3]["value"] = totalCarbs.toStringAsFixed(1);
+            // Update nutrition array with calculated values
+            nutritionArr[0]["value"] = totalCalories.toString();
+            nutritionArr[1]["value"] = totalProtein.toStringAsFixed(1);
+            nutritionArr[2]["value"] = totalFat.toStringAsFixed(1);
+            nutritionArr[3]["value"] = totalCarbs.toStringAsFixed(1);
+          }
         });
       } else {
         print("Error response: ${response.statusCode}");
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error loading meals: ${response.statusCode}')),
-        );
+        print("Error response body: ${response.body}");
+        _showError('Error loading meals: ${response.statusCode}');
       }
     } catch (e) {
       print("Exception: $e");
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
+      _showError('Error: $e');
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
@@ -422,26 +463,6 @@ class _MealScheduleViewState extends State<MealScheduleView> {
           style: TextStyle(
               color: TColor.black, fontSize: 16, fontWeight: FontWeight.w700),
         ),
-        actions: [
-          InkWell(
-            onTap: () {},
-            child: Container(
-              margin: const EdgeInsets.all(8),
-              height: 40,
-              width: 40,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                  color: TColor.lightGray,
-                  borderRadius: BorderRadius.circular(10)),
-              child: Image.asset(
-                "assets/img/more_btn.png",
-                width: 15,
-                height: 15,
-                fit: BoxFit.contain,
-              ),
-            ),
-          )
-        ],
       ),
       backgroundColor: TColor.white,
       body: Column(
@@ -471,23 +492,18 @@ class _MealScheduleViewState extends State<MealScheduleView> {
             dayBGColor: Colors.grey.withOpacity(0.15),
             titleSpaceBetween: 15,
             backgroundColor: Colors.transparent,
-            // fullCalendar: false,
             fullCalendarScroll: FullCalendarScroll.horizontal,
             fullCalendarDay: WeekDay.short,
             selectedDateColor: Colors.white,
             dateColor: Colors.black,
             locale: 'en',
-
-            initialDate: DateTime.now(),
-            calendarEventColor: TColor.primaryColor2,
-            firstDate: DateTime.now().subtract(const Duration(days: 140)),
-            lastDate: DateTime.now().add(const Duration(days: 60)),
-
+            initialDate: selectedDate,
+            firstDate: DateTime.now().subtract(const Duration(days: 365)),
+            lastDate: DateTime.now().add(const Duration(days: 365)),
             onDateSelected: (date) {
               setState(() {
-                _selectedDateAppBBar = date;
+                selectedDate = date;
               });
-              // Fetch meals for the selected date
               fetchMealsByDate(date);
             },
             selectedDayLogo: Container(
@@ -523,7 +539,7 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            "Today's Meal",
+                            DateFormat('MMM d, yyyy').format(selectedDate),
                             style: TextStyle(
                                 color: TColor.black,
                                 fontSize: 16,
@@ -531,8 +547,7 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                           ),
                           TextButton(
                             onPressed: () {
-                              // Refresh all meals
-                              fetchMealsByDate(_selectedDateAppBBar);
+                              fetchMealsByDate(selectedDate);
                             },
                             child: Text(
                               "${breakfastArr.length + lunchArr.length + dinnerArr.length} Items | ${breakfastCalories + lunchCalories + dinnerCalories} calories",
@@ -543,22 +558,54 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                         ],
                       ),
                     ),
-                    (breakfastArr.isEmpty &&
-                            lunchArr.isEmpty &&
-                            dinnerArr.isEmpty)
-                        ? Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 15, vertical: 10),
-                            child: Text(
-                              "No meals logged for this date",
-                              style:
-                                  TextStyle(color: TColor.gray, fontSize: 14),
-                            ),
-                          )
-                        : Column(
+                    if (breakfastArr.isEmpty &&
+                        lunchArr.isEmpty &&
+                        dinnerArr.isEmpty)
+                      Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(20.0),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // Display breakfast meals
-                              ListView.builder(
+                              Icon(
+                                Icons.no_meals_outlined,
+                                size: 50,
+                                color: TColor.gray,
+                              ),
+                              SizedBox(height: 10),
+                              Text(
+                                "No meals logged for ${DateFormat('MMM d, yyyy').format(selectedDate)}",
+                                style: TextStyle(
+                                  color: TColor.gray,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    else
+                      Column(
+                        children: [
+                          // Breakfast Section
+                          if (breakfastArr.isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 15, vertical: 8),
+                                  child: Text(
+                                    "Breakfast",
+                                    style: TextStyle(
+                                      color: TColor.black,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                ListView.builder(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 15),
                                   physics: const NeverScrollableScrollPhysics(),
@@ -567,11 +614,30 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                                   itemBuilder: (context, index) {
                                     var mObj = Map<String, dynamic>.from(
                                         breakfastArr[index]);
-                                    mObj["category"] = "Breakfast";
-                                    return _buildMealRow(mObj, index);
-                                  }),
-                              // Display lunch meals
-                              ListView.builder(
+                                    return _buildMealRow(mObj);
+                                  },
+                                ),
+                              ],
+                            ),
+
+                          // Lunch Section
+                          if (lunchArr.isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 15, vertical: 8),
+                                  child: Text(
+                                    "Lunch",
+                                    style: TextStyle(
+                                      color: TColor.black,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                ListView.builder(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 15),
                                   physics: const NeverScrollableScrollPhysics(),
@@ -580,11 +646,30 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                                   itemBuilder: (context, index) {
                                     var mObj = Map<String, dynamic>.from(
                                         lunchArr[index]);
-                                    mObj["category"] = "Lunch";
-                                    return _buildMealRow(mObj, index);
-                                  }),
-                              // Display dinner meals
-                              ListView.builder(
+                                    return _buildMealRow(mObj);
+                                  },
+                                ),
+                              ],
+                            ),
+
+                          // Dinner Section
+                          if (dinnerArr.isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 15, vertical: 8),
+                                  child: Text(
+                                    "Dinner",
+                                    style: TextStyle(
+                                      color: TColor.black,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                ListView.builder(
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 15),
                                   physics: const NeverScrollableScrollPhysics(),
@@ -593,99 +678,156 @@ class _MealScheduleViewState extends State<MealScheduleView> {
                                   itemBuilder: (context, index) {
                                     var mObj = Map<String, dynamic>.from(
                                         dinnerArr[index]);
-                                    mObj["category"] = "Dinner";
-                                    return _buildMealRow(mObj, index);
-                                  }),
-                            ],
-                          ),
-                    SizedBox(
-                      height: media.width * 0.05,
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "${DateFormat('MMM d, yyyy').format(_selectedDateAppBBar)} Meal Nutritions",
-                            style: TextStyle(
-                                color: TColor.black,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700),
-                          ),
+                                    return _buildMealRow(mObj);
+                                  },
+                                ),
+                              ],
+                            ),
+
+                          // Nutrition Summary
+                          if (breakfastArr.isNotEmpty ||
+                              lunchArr.isNotEmpty ||
+                              dinnerArr.isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 15, vertical: 8),
+                                  child: Text(
+                                    "Nutrition Summary",
+                                    style: TextStyle(
+                                      color: TColor.black,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                ListView.builder(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 15),
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  shrinkWrap: true,
+                                  itemCount: nutritionArr.length,
+                                  itemBuilder: (context, index) {
+                                    var nObj =
+                                        nutritionArr[index] as Map? ?? {};
+                                    return NutritionRow(nObj: nObj);
+                                  },
+                                ),
+                              ],
+                            ),
                         ],
                       ),
-                    ),
-                    ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 15),
-                        physics: const NeverScrollableScrollPhysics(),
-                        shrinkWrap: true,
-                        itemCount: nutritionArr.length,
-                        itemBuilder: (context, index) {
-                          var nObj = nutritionArr[index] as Map? ?? {};
-
-                          return NutritionRow(
-                            nObj: nObj,
-                          );
-                        }),
-                    SizedBox(
-                      height: media.width * 0.05,
-                    )
+                    SizedBox(height: media.width * 0.05),
                   ],
                 ),
               ),
-            )
+            ),
         ],
       ),
     );
   }
 
-  Widget _buildMealRow(Map mObj, int index) {
-    // Debug print to see what's in the meal object
-    print("Meal object: $mObj");
-    print("Category value: ${mObj["category"]}");
-
+  Widget _buildMealRow(Map mObj) {
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
-      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 2),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: TColor.lightGray,
-        borderRadius: BorderRadius.circular(10),
+        color: TColor.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 2)],
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  mObj["name"].toString(),
-                  style: TextStyle(
-                      color: TColor.black,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            mObj["name"]?.toString() ?? "Unknown Meal",
+                            style: TextStyle(
+                              color: TColor.black,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            mObj["time"]?.toString() ?? "",
+                            style: TextStyle(
+                              color: TColor.gray,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: TColor.primaryColor2.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        "${mObj["calories"]?.toString() ?? "0"} kCal",
+                        style: TextStyle(
+                          color: TColor.primaryColor1,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                SizedBox(height: 4),
-                Text(
-                  "Category: ${mObj["category"] ?? "Meal"}",
-                  style: TextStyle(
-                    color: TColor.gray,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
-          Text(
-            "${mObj["calories"]} kCal",
-            style: TextStyle(
-                color: TColor.primaryColor1,
-                fontSize: 14,
-                fontWeight: FontWeight.w500),
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildNutrientInfo(
+                  "Protein", "${mObj["protein"]?.toString() ?? "0"}g"),
+              _buildNutrientInfo(
+                  "Carbohydrates", "${mObj["carbs"]?.toString() ?? "0"}g"),
+              _buildNutrientInfo("Fats", "${mObj["fat"]?.toString() ?? "0"}g"),
+            ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildNutrientInfo(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: TColor.gray,
+            fontSize: 11,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            color: TColor.black,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }

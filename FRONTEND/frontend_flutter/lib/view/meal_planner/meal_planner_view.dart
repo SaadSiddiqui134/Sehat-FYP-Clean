@@ -939,8 +939,9 @@ class _MealPlannerViewState extends State<MealPlannerView>
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
-                                    builder: (context) =>
-                                        const MealScheduleView(),
+                                    builder: (context) => MealScheduleView(
+                                      userData: widget.userData,
+                                    ),
                                   ),
                                 );
                               },
