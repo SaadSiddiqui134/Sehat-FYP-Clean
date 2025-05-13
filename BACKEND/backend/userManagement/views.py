@@ -73,6 +73,8 @@ def update_user(request, user_id):
         user_obj.UserFirstName = request.POST.get("UserFirstName", user_obj.UserFirstName)
         user_obj.UserLastName = request.POST.get("UserLastName", user_obj.UserLastName)
         user_obj.UserEmail = request.POST.get("UserEmail", user_obj.UserEmail)
+        user_obj.UserWeight = request.POST.get("UserWeight", user_obj.UserWeight)
+        user_obj.UserHeight = request.POST.get("UserHeight", user_obj.UserHeight)
         user_obj.save()
         return JsonResponse({"status": "success", "message": "User updated successfully"})
     return JsonResponse({"status": "error", "message": "Invalid request method"}, status=405)

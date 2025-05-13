@@ -2,7 +2,7 @@ from django.shortcuts import render
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from .models import DiabetesPredictionLog, HypertensionPredictionLog
-from django.contrib.auth.models import User
+from userManagement.models import User
 import json
 import numpy as np
 import pickle
@@ -133,8 +133,8 @@ def predict_diabetes(request):
                     print(f"User ID from request: '{user_id}', type: {type(user_id)}")
                     
                     try:
-                        user = User.objects.get(id=user_id)
-                        print(f"Found user: {user.username}")
+                        user = User.objects.get(UserID=user_id)
+                        print(f"Found user: {user.UserFirstName} {user.UserLastName}")
                         
                         # Create the log
                         log = DiabetesPredictionLog.objects.create(
@@ -277,23 +277,23 @@ def predict_hypertension(request):
                     print(f"User ID from request: '{user_id}', type: {type(user_id)}")
                     
                     try:
-                        user = User.objects.get(id=user_id)
-                        print(f"Found user: {user.username}")
+                        user = User.objects.get(UserID=user_id)
+                        print(f"Found user: {user.UserFirstName} {user.UserLastName}")
                         
                         # Create the log
                         log = HypertensionPredictionLog.objects.create(
                             user=user,
-                            gender=gender,
+                            gender=data.get('gender', ''),
                             age=age,
-                            heart_disease=data.get('heart_disease', '').lower(),
-                            smoking_history=smoking_history,
+                            heart_disease=data.get('heart_disease', ''),
+                            smoking_history=data.get('smoking_history', ''),
                             bmi=bmi,
                             HbA1c_level=hba1c,
                             blood_glucose_level=glucose,
-                            diabetes=data.get('diabetes', '').lower(),
+                            diabetes=data.get('diabetes', ''),
                             prediction=bool(prediction)
                         )
-                        print(f"Successfully created hypertension log with ID: {log.id}")
+                        print(f"Successfully created log with ID: {log.id}")
                         
                     except User.DoesNotExist:
                         print(f"ERROR: User with ID {user_id} not found")

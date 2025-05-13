@@ -179,11 +179,12 @@ class _HomeViewState extends State<HomeView>
     final u_id = widget.userData?['userID'];
     final firstName = widget.userData?['UserFirstName'] ?? 'Guest';
     final lastname = widget.userData?['UserLastName'] ?? ' ';
-    final email = widget.userData?['email'] ?? ' email@gmail.com';
-    final gender = widget.userData?['gender'] ?? 'Male';
-    final weight = double.tryParse(widget.userData?['weight'] ?? '80') ?? 80;
+    final email = widget.userData?['UserEmail'] ?? ' email@gmail.com';
+    final gender = widget.userData?['UserGender'] ?? 'Male';
+    final weight =
+        double.tryParse(widget.userData?['UserWeight'] ?? '80') ?? 80;
     final heightInCm =
-        double.tryParse(widget.userData?['height'] ?? '170') ?? 170;
+        double.tryParse(widget.userData?['UserHeight'] ?? '170') ?? 170;
 
     // Calculate BMI
     final bmi = weight / (heightInCm / 100 * heightInCm / 100);

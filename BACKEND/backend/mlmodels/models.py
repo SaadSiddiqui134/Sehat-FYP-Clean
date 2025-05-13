@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import User
+from userManagement.models import User
 
 # Create your models here.
 class DiabetesPredictionLog(models.Model):
@@ -16,7 +16,7 @@ class DiabetesPredictionLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
-        return f"{self.user.username}'s diabetes prediction on {self.timestamp}"
+        return f"{self.user.UserFirstName}'s diabetes prediction on {self.timestamp}"
 
 class HypertensionPredictionLog(models.Model):
     user = models.ForeignKey(User, on_delete=models.CASCADE)
@@ -32,4 +32,4 @@ class HypertensionPredictionLog(models.Model):
     timestamp = models.DateTimeField(auto_now_add=True)
     
     def __str__(self):
-        return f"{self.user.username}'s hypertension prediction on {self.timestamp}"
+        return f"{self.user.UserFirstName}'s hypertension prediction on {self.timestamp}"

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:simple_circular_progress_bar/simple_circular_progress_bar.dart';
@@ -12,6 +13,7 @@ import 'meal_food_details_view.dart';
 import 'meal_schedule_view.dart';
 import 'dart:convert';
 import 'dart:async';
+import 'dart:typed_data'; // Add this import for Uint8List
 
 class MealPlannerView extends StatefulWidget {
   final Map<String, dynamic>? userData;
@@ -23,18 +25,8 @@ class MealPlannerView extends StatefulWidget {
 
 class _MealPlannerViewState extends State<MealPlannerView>
     with WidgetsBindingObserver {
-  List todayMealArr = [
-    {
-      "name": "Salmon Nigiri",
-      "image": "assets/img/m_1.png",
-      "time": "28/05/2023 07:00 AM"
-    },
-    {
-      "name": "Lowfat Milk",
-      "image": "assets/img/m_2.png",
-      "time": "28/05/2023 08:00 AM"
-    },
-  ];
+  List todayMealArr = []; // Initialize as empty list instead of with dummy data
+  DateTime _selectedDateAppBBar = DateTime.now();
 
   List findEatArr = [
     {
@@ -53,32 +45,26 @@ class _MealPlannerViewState extends State<MealPlannerView>
   String currentQuery = "";
 
   TextEditingController searchController = TextEditingController();
-  String selectedMealType = "Breakfast";
+  String selectedMealType =
+      "Breakfast"; // Initialize with first dropdown option
   bool isLoading = false;
   Map<String, dynamic>? nutritionData;
   Timer? _refreshTimer;
   final ImagePicker _picker = ImagePicker();
 
+  // Add a flag to track if initial fetch is done
+  bool _initialFetchDone = false;
+
   @override
   void initState() {
     super.initState();
+    _selectedDateAppBBar = DateTime.now();
 
     // Calculate calories based on user data
     totalCalories = calculateDailyCalories();
 
     // Register this object as an observer to detect app state changes
     WidgetsBinding.instance.addObserver(this);
-
-    // Initialize with userData if available
-    if (widget.userData != null) {
-      // Example: You could calculate calorie needs based on user data
-      if (widget.userData!.containsKey('calculatedBMI') &&
-          widget.userData!.containsKey('weight') &&
-          widget.userData!.containsKey('height')) {
-        // Here you could set personalized nutrition targets
-        // For example, update totalCalories based on weight, height, BMI
-      }
-    }
 
     // Add a listener to update currentQuery whenever the text changes
     searchController.addListener(() {
@@ -87,12 +73,16 @@ class _MealPlannerViewState extends State<MealPlannerView>
       });
     });
 
-    // Initial fetch
-    fetchMealsByDate();
-
-    // Set up a timer to refresh data every 5 minutes
-    _refreshTimer = Timer.periodic(Duration(minutes: 2), (timer) {
+    // Initial fetch - use Future.delayed to ensure proper initialization
+    Future.delayed(Duration.zero, () {
       if (mounted) {
+        fetchMealsByDate();
+      }
+    });
+
+    // Modify refresh timer to only refresh if no ongoing fetch
+    _refreshTimer = Timer.periodic(Duration(minutes: 2), (timer) {
+      if (mounted && !isLoading) {
         fetchMealsByDate();
       }
     });
@@ -219,12 +209,15 @@ class _MealPlannerViewState extends State<MealPlannerView>
 
     try {
       // Use the user ID from userData
-      int userId = widget.userData?['userID'] ?? 1;
+      int userId = widget.userData?['UserID'] ?? 1;
+
+      print("Logging meal with category: $selectedMealType"); // Debug log
 
       final mealData = {
         'user_id': userId,
         'name': item['name'],
-        'category': selectedMealType,
+        'category':
+            selectedMealType, // This is correct, let's check the API response
         'calories': item['calories'],
         'serving_size': item['serving_size_g'],
         'protein_g': item['protein_g'],
@@ -238,6 +231,8 @@ class _MealPlannerViewState extends State<MealPlannerView>
         'cholesterol_mg': item['cholesterol_mg'],
       };
 
+      print("Sending meal data: $mealData"); // Debug log
+
       final response = await http.post(
         Uri.parse('${ApiConstants.baseUrl}/meals/log/'),
         headers: {
@@ -246,13 +241,17 @@ class _MealPlannerViewState extends State<MealPlannerView>
         body: json.encode(mealData),
       );
 
+      print("Response status: ${response.statusCode}"); // Debug log
+      print("Response body: ${response.body}"); // Debug log
+
       setState(() {
         isLoading = false;
       });
 
       if (response.statusCode == 201) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Meal logged successfully!')),
+          SnackBar(
+              content: Text('Meal logged successfully as $selectedMealType!')),
         );
         // Refresh the meals data
         fetchMealsByDate();
@@ -271,30 +270,35 @@ class _MealPlannerViewState extends State<MealPlannerView>
     }
   }
 
-  // Add this function to your _MealPlannerViewState class
+  // Add this method to validate meal type
+  String validateMealType(String mealType) {
+    // Ensure the meal type is one of the valid options
+    final validTypes = ["Breakfast", "Lunch", "Dinner"];
+    if (!validTypes.contains(mealType)) {
+      print(
+          "Invalid meal type: $mealType, defaulting to Breakfast"); // Debug log
+      return "Breakfast";
+    }
+    return mealType;
+  }
+
+  // Modify fetchMealsByDate to handle state better
   Future<void> fetchMealsByDate() async {
+    if (!mounted || isLoading) return; // Prevent multiple simultaneous fetches
+
     setState(() {
       isLoading = true;
+      // Don't clear todayMealArr here anymore
     });
 
     try {
-      // Get today's date in the format YYYY-MM-DD
       final now = DateTime.now();
       final formattedDate =
           "${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}";
+      final userId = widget.userData?['UserID'] ?? 1;
 
-      // Use user ID from userData, or default to 1
-      final userId = widget.userData?['userID'] ?? 1;
-      print("Using user ID: $userId");
-
-      // Construct the URL
       final url = ApiConstants.mealsDataByDate(userId, formattedDate);
-      print("Request URL: $url");
 
-      // Make the API request
-      print("Sending GET request...");
-      print("Using date: $formattedDate");
-      print("Using user ID: $userId");
       final response = await http.get(
         Uri.parse(url),
         headers: {
@@ -302,10 +306,153 @@ class _MealPlannerViewState extends State<MealPlannerView>
         },
       );
 
-      // Log response details
-      print("Response status code: ${response.statusCode}");
-      print("Response headers: ${response.headers}");
-      print("Response body: ${response.body}");
+      if (!mounted) return; // Check if widget is still mounted after await
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+
+        if (!mounted) return; // Check again before setState
+
+        setState(() {
+          List newTodayMeals = [];
+
+          // Process breakfast meals
+          if (data['Breakfast'] != null) {
+            for (var meal in data['Breakfast']) {
+              newTodayMeals.add({
+                "name": meal['name'],
+                "image": "assets/img/m_1.png",
+                "time": _formatTimeForDisplay(meal['meal_log_time']),
+                "calories": meal['calories'],
+                "category": meal['category'] ?? "Breakfast"
+              });
+            }
+          }
+
+          // Process lunch meals
+          if (data['Lunch'] != null) {
+            for (var meal in data['Lunch']) {
+              newTodayMeals.add({
+                "name": meal['name'],
+                "image": "assets/img/m_2.png",
+                "time": _formatTimeForDisplay(meal['meal_log_time']),
+                "calories": meal['calories'],
+                "category": meal['category'] ?? "Lunch"
+              });
+            }
+          }
+
+          // Process dinner meals
+          if (data['Dinner'] != null) {
+            for (var meal in data['Dinner']) {
+              newTodayMeals.add({
+                "name": meal['name'],
+                "image": "assets/img/m_3.png",
+                "time": _formatTimeForDisplay(meal['meal_log_time']),
+                "calories": meal['calories'],
+                "category": meal['category'] ?? "Dinner"
+              });
+            }
+          }
+
+          // Only update if there are meals or this is the initial fetch
+          if (newTodayMeals.isNotEmpty || !_initialFetchDone) {
+            todayMealArr = newTodayMeals;
+            _initialFetchDone = true;
+          }
+
+          // Update consumed calories
+          consumedCalories = data['total_calories'] != null
+              ? data['total_calories'].toInt()
+              : 0;
+
+          isLoading = false;
+        });
+      } else {
+        if (!mounted) return;
+        setState(() {
+          isLoading = false;
+        });
+        print("Error response: ${response.statusCode}");
+      }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        isLoading = false;
+      });
+      print("Exception in fetchMealsByDate: $e");
+    }
+  }
+
+  Future<void> _getImage(ImageSource source) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: source,
+        imageQuality: 40, // Reduce quality further
+        maxWidth: 224, // Standard size for many vision models
+        maxHeight: 224, // Standard size for many vision models
+      );
+
+      if (image != null) {
+        print('Image selected: ${image.path}');
+        // Read the image file as bytes
+        final bytes = await image.readAsBytes();
+        print('Image bytes length: ${bytes.length}');
+
+        // Further compress if still too large (over 500KB)
+        if (bytes.length > 500 * 1024) {
+          final quality = (30 * (500 * 1024) / bytes.length).round();
+          final XFile? compressedImage = await _picker.pickImage(
+            source: source,
+            imageQuality: quality,
+            maxWidth: 224,
+            maxHeight: 224,
+          );
+          if (compressedImage != null) {
+            final compressedBytes = await compressedImage.readAsBytes();
+            print('Compressed image bytes length: ${compressedBytes.length}');
+            await _processAndSendImage(compressedBytes);
+          }
+        } else {
+          await _processAndSendImage(bytes);
+        }
+      }
+    } catch (e, stackTrace) {
+      print('Error picking image: $e');
+      print('Stack trace: $stackTrace');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<void> _processAndSendImage(Uint8List bytes) async {
+    setState(() {
+      isLoading = true;
+    });
+
+    try {
+      print('Sending request to: ${ApiConstants.detectFood}');
+      // Convert to base64
+      final base64Image = base64Encode(bytes);
+      print('Base64 image length: ${base64Image.length}');
+
+      // Send to backend for food detection
+      final response = await http.post(
+        Uri.parse(ApiConstants.detectFood),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: json.encode({
+          'image': base64Image,
+        }),
+      );
+
+      print('Response status code: ${response.statusCode}');
+      print('Response body: ${response.body}');
 
       setState(() {
         isLoading = false;
@@ -313,192 +460,60 @@ class _MealPlannerViewState extends State<MealPlannerView>
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        print("Decoded JSON data: $data");
-
-        // Log meal counts
-        if (data['Breakfast'] != null) {
-          print("Breakfast meals: ${data['Breakfast'].length}");
-        }
-        if (data['Lunch'] != null) {
-          print("Lunch meals: ${data['Lunch'].length}");
-        }
-        if (data['Dinner'] != null) {
-          print("Dinner meals: ${data['Dinner'].length}");
-        }
-        print("Total calories: ${data['total_calories']}");
-
-        // Update your UI with the meal data
-        setState(() {
-          // Create a new list for today's meals
-          List todayMeals = [];
-
-          // Add breakfast meals
-          if (data['Breakfast'] != null) {
-            for (var meal in data['Breakfast']) {
-              print("Adding breakfast meal: ${meal['name']}");
-              todayMeals.add({
-                "name": meal['name'],
-                "image": "assets/img/m_1.png", // Default image
-                "time": meal['meal_log_time'],
-                "calories": meal['calories'],
-                "category": "Breakfast"
-              });
-            }
-          }
-
-          // Add lunch meals
-          if (data['Lunch'] != null) {
-            for (var meal in data['Lunch']) {
-              print("Adding lunch meal: ${meal['name']}");
-              todayMeals.add({
-                "name": meal['name'],
-                "image": "assets/img/m_2.png", // Default image
-                "time": meal['meal_log_time'],
-                "calories": meal['calories'],
-                "category": "Lunch"
-              });
-            }
-          }
-
-          // Add dinner meals
-          if (data['Dinner'] != null) {
-            for (var meal in data['Dinner']) {
-              print("Adding dinner meal: ${meal['name']}");
-              todayMeals.add({
-                "name": meal['name'],
-                "image": "assets/img/m_3.png", // Default image
-                "time": meal['meal_log_time'],
-                "calories": meal['calories'],
-                "category": "Dinner"
-              });
-            }
-          }
-
-          print("Final todayMeals list: $todayMeals");
-          print("todayMeals length: ${todayMeals.length}");
-
-          // Update todayMealArr with the fetched meals
-          todayMealArr = todayMeals;
-          print("Updated todayMealArr. Length: ${todayMealArr.length}");
-
-          // Update consumed calories
-          consumedCalories = data['total_calories'] != null
-              ? data['total_calories'].toInt()
-              : 0;
-          print("Updated consumedCalories: $consumedCalories");
-        });
+        // Show the detected food in a dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Food Detected'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Detected Food: ${data['food']}'),
+                Text(
+                    'Confidence: ${(data['confidence'] * 100).toStringAsFixed(1)}%'),
+                SizedBox(height: 10),
+                Text('Would you like to log this food?'),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  // Pre-fill the search with the detected food
+                  searchController.text = data['food'];
+                  fetchNutritionData(data['food']);
+                },
+                child: Text('Log Food'),
+              ),
+            ],
+          ),
+        );
       } else {
-        print("Error response: ${response.statusCode}");
+        print('Error response: ${response.body}');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Error loading meals: ${response.statusCode}')),
+            content: Text(
+                'Error detecting food. Please try again with a smaller image or different photo.'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     } catch (e, stackTrace) {
-      print("Exception in fetchMealsByDate: $e");
-      print("Stack trace: $stackTrace");
+      print('Error in API call: $e');
+      print('Stack trace: $stackTrace');
       setState(() {
         isLoading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e')),
-      );
-    }
-  }
-
-  Future<void> _getImage(ImageSource source) async {
-    try {
-      final XFile? image = await _picker.pickImage(source: source);
-      if (image != null) {
-        print('Image selected: ${image.path}');
-        // Read the image file as bytes
-        final bytes = await image.readAsBytes();
-        print('Image bytes length: ${bytes.length}');
-        // Convert to base64
-        final base64Image = base64Encode(bytes);
-        print('Base64 image length: ${base64Image.length}');
-
-        setState(() {
-          isLoading = true;
-        });
-
-        try {
-          print('Sending request to: ${ApiConstants.detectFood}');
-          // Send to backend for food detection
-          final response = await http.post(
-            Uri.parse(ApiConstants.detectFood),
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: json.encode({
-              'image': base64Image,
-            }),
-          );
-
-          print('Response status code: ${response.statusCode}');
-          print('Response body: ${response.body}');
-
-          setState(() {
-            isLoading = false;
-          });
-
-          if (response.statusCode == 200) {
-            final data = json.decode(response.body);
-            // Show the detected food in a dialog
-            showDialog(
-              context: context,
-              builder: (context) => AlertDialog(
-                title: Text('Food Detected'),
-                content: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Detected Food: ${data['food']}'),
-                    Text(
-                        'Confidence: ${(data['confidence'] * 100).toStringAsFixed(1)}%'),
-                    SizedBox(height: 10),
-                    Text('Would you like to log this food?'),
-                  ],
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.pop(context),
-                    child: Text('Cancel'),
-                  ),
-                  TextButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      // Pre-fill the search with the detected food
-                      searchController.text = data['food'];
-                      fetchNutritionData(data['food']);
-                    },
-                    child: Text('Log Food'),
-                  ),
-                ],
-              ),
-            );
-          } else {
-            print('Error response: ${response.body}');
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error detecting food: ${response.body}')),
-            );
-          }
-        } catch (e, stackTrace) {
-          print('Error in API call: $e');
-          print('Stack trace: $stackTrace');
-          setState(() {
-            isLoading = false;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
-        }
-      }
-    } catch (e, stackTrace) {
-      print('Error picking image: $e');
-      print('Stack trace: $stackTrace');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error picking image: $e')),
+        SnackBar(
+          content: Text('Error processing image. Please try again.'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   }
@@ -677,7 +692,7 @@ class _MealPlannerViewState extends State<MealPlannerView>
                               borderRadius: BorderRadius.circular(15),
                             ),
                             child: DropdownButtonHideUnderline(
-                              child: DropdownButton(
+                              child: DropdownButton<String>(
                                 isExpanded: true,
                                 value: selectedMealType,
                                 items: ["Breakfast", "Lunch", "Dinner"]
@@ -691,10 +706,14 @@ class _MealPlannerViewState extends State<MealPlannerView>
                                           ),
                                         ))
                                     .toList(),
-                                onChanged: (value) {
-                                  setState(() {
-                                    selectedMealType = value.toString();
-                                  });
+                                onChanged: (String? newValue) {
+                                  if (newValue != null) {
+                                    setState(() {
+                                      selectedMealType = newValue;
+                                      print(
+                                          "Selected meal type changed to: $newValue"); // Debug log
+                                    });
+                                  }
                                 },
                                 icon: Icon(Icons.expand_more,
                                     color: TColor.primaryColor1),
@@ -925,7 +944,11 @@ class _MealPlannerViewState extends State<MealPlannerView>
                         shrinkWrap: true,
                         itemCount: todayMealArr.length,
                         itemBuilder: (context, index) {
+                          print(
+                              "Building meal row for index: $index"); // Debug log
                           var mObj = todayMealArr[index] as Map? ?? {};
+                          print(
+                              "Meal object at index $index: $mObj"); // Debug log
                           return _buildMealRow(mObj);
                         }),
                   ],
@@ -1035,6 +1058,7 @@ class _MealPlannerViewState extends State<MealPlannerView>
   }
 
   Widget _buildMealRow(Map mObj) {
+    print("Building meal row with object: $mObj"); // Debug log
     return Container(
         margin: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
         padding: const EdgeInsets.all(15),
@@ -1049,18 +1073,19 @@ class _MealPlannerViewState extends State<MealPlannerView>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    mObj["name"].toString(),
+                    mObj["name"]?.toString() ?? "Unknown Meal",
                     style: TextStyle(
                         color: TColor.black,
                         fontSize: 14,
                         fontWeight: FontWeight.w500),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    mObj["time"].toString(),
+                    "${mObj["calories"]?.toString() ?? "0"} kCal",
                     style: TextStyle(
-                      color: TColor.gray,
+                      color: TColor.primaryColor1,
                       fontSize: 12,
+                      fontWeight: FontWeight.w500,
                     ),
                   ),
                 ],
@@ -1126,6 +1151,16 @@ class _MealPlannerViewState extends State<MealPlannerView>
     } catch (e) {
       print("Error calculating calories: $e");
       return 2500; // Default if calculation fails
+    }
+  }
+
+  String _formatTimeForDisplay(String dateTimeString) {
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+      return "${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}";
+    } catch (e) {
+      print("Error formatting time: $e for string: $dateTimeString");
+      return dateTimeString; // Return original string if parsing fails
     }
   }
 }

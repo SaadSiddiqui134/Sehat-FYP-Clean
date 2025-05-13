@@ -6,7 +6,7 @@ from .models import FoodLog
 from .serializers import FoodLogSerializer, FoodLogCreateSerializer, FoodLogSummarySerializer
 from django.utils import timezone
 from django.db.models import Sum
-from django.contrib.auth.models import User
+from userManagement.models import User
 
 # Create your views here.
 
@@ -23,7 +23,7 @@ def log_meal(request):
         )
     
     try:
-        user = User.objects.get(id=user_id)
+        user = User.objects.get(UserID=user_id)
     except User.DoesNotExist:
         return Response(
             {'error': f'User with id {user_id} does not exist'}, 
@@ -94,9 +94,17 @@ def get_meals(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    meals = FoodLog.objects.filter(user_id=user_id)
-    serializer = FoodLogSummarySerializer(meals, many=True)
-    return Response(serializer.data)
+    try:
+        # Verify the user exists
+        user = User.objects.get(UserID=user_id)
+        meals = FoodLog.objects.filter(user=user)
+        serializer = FoodLogSummarySerializer(meals, many=True)
+        return Response(serializer.data)
+    except User.DoesNotExist:
+        return Response(
+            {'error': f'User with id {user_id} does not exist'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
 
 @api_view(['GET'])
 def get_meals_by_date(request):
@@ -113,6 +121,9 @@ def get_meals_by_date(request):
         )
     
     try:
+        # Verify the user exists
+        user = User.objects.get(UserID=user_id)
+        
         if date_str:
             # Parse the date from string
             date = timezone.datetime.strptime(date_str, '%Y-%m-%d').date()
@@ -122,7 +133,7 @@ def get_meals_by_date(request):
         
         # Filter meals by user and date
         meals = FoodLog.objects.filter(
-            user_id=user_id,
+            user=user,
             meal_log_time__date=date
         )
         
@@ -144,24 +155,29 @@ def get_meals_by_date(request):
         # After checking if meals exist for the requested date, if none found:
         if not result['Breakfast'] and not result['Lunch'] and not result['Dinner']:
             # Find the most recent date with meals
-            most_recent_meal = FoodLog.objects.filter(user_id=user_id).order_by('-meal_log_time__date').first()
+            most_recent_meal = FoodLog.objects.filter(user=user).order_by('-meal_log_time__date').first()
             if most_recent_meal:
                 # Use that date instead
                 formatted_date = most_recent_meal.meal_log_time.date()
                 # Re-query with this date
                 result['Breakfast'] = FoodLogSummarySerializer(
-                    FoodLog.objects.filter(user_id=user_id, meal_log_time__date=formatted_date, category='Breakfast'), many=True
+                    FoodLog.objects.filter(user=user, meal_log_time__date=formatted_date, category='Breakfast'), many=True
                 ).data
                 result['Lunch'] = FoodLogSummarySerializer(
-                    FoodLog.objects.filter(user_id=user_id, meal_log_time__date=formatted_date, category='Lunch'), many=True
+                    FoodLog.objects.filter(user=user, meal_log_time__date=formatted_date, category='Lunch'), many=True
                 ).data
                 result['Dinner'] = FoodLogSummarySerializer(
-                    FoodLog.objects.filter(user_id=user_id, meal_log_time__date=formatted_date, category='Dinner'), many=True
+                    FoodLog.objects.filter(user=user, meal_log_time__date=formatted_date, category='Dinner'), many=True
                 ).data
-                result['total_calories'] = FoodLog.objects.filter(user_id=user_id, meal_log_time__date=formatted_date).aggregate(total=Sum('calories'))['total'] or 0
+                result['total_calories'] = FoodLog.objects.filter(user=user, meal_log_time__date=formatted_date).aggregate(total=Sum('calories'))['total'] or 0
         
         return Response(result)
         
+    except User.DoesNotExist:
+        return Response(
+            {'error': f'User with id {user_id} does not exist'}, 
+            status=status.HTTP_404_NOT_FOUND
+        )
     except Exception as e:
         return Response(
             {'error': f'Error retrieving meals: {str(e)}'},

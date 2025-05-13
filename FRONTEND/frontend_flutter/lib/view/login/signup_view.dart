@@ -31,9 +31,9 @@ void _handleSignup(
     final response = await http.post(
       Uri.parse(ApiConstants.createUser),
       body: {
-        'UserFirstName': firstname,
-        'UserLastName': lastname,
-        'UserEmail': email,
+        'UserFirstName': firstname.trim(),
+        'UserLastName': lastname.trim(),
+        'UserEmail': email.trim(),
         'UserPassword': password,
         'UserGender': gender,
         'UserWeight': weight,
@@ -43,9 +43,12 @@ void _handleSignup(
     print(response.body);
 
     if (response.statusCode == 200) {
-      // If successful, navigate to the next screen
+      // If successful, show success message and navigate
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('User Created Successfully')),
+        SnackBar(
+          content: Text('User Created Successfully'),
+          backgroundColor: Colors.green,
+        ),
       );
       Navigator.push(
         context,
@@ -59,21 +62,25 @@ void _handleSignup(
                     'weight': weight,
                     'height': height_cm
                   },
-                  // Add more fields as needed
                 )),
       );
     } else {
-      // Show the error in case of failure
+      // Show the error message
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-            content: Text('Error: ${json.decode(response.body)['message']}')),
+          content: Text('Error: ${json.decode(response.body)['message']}'),
+          backgroundColor: Colors.red,
+        ),
       );
     }
   } catch (e) {
     print("Error: ${e.toString()}"); // Log the error message
-    // Handle network errors
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("$e")),
+      SnackBar(
+        content:
+            Text('Network error. Please check your connection and try again.'),
+        backgroundColor: Colors.red,
+      ),
     );
   }
 }
@@ -104,6 +111,123 @@ class _SignUpViewState extends State<SignUpView> {
   final TextEditingController _weightController = TextEditingController();
   final TextEditingController _heighttController = TextEditingController();
   final TextEditingController _dateController = TextEditingController();
+
+  // Add a more comprehensive email regex pattern
+  final emailRegex = RegExp(
+    r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    caseSensitive: false,
+  );
+
+  bool _validateInputs(
+      BuildContext context,
+      String firstname,
+      String lastname,
+      String email,
+      String password,
+      String gender,
+      String weight,
+      String height) {
+    // Validate required fields
+    if (firstname.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('First name is required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    if (lastname.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Last name is required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    // Enhanced email validation
+    final trimmedEmail = email.trim();
+    if (trimmedEmail.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Email is required'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    if (!emailRegex.hasMatch(trimmedEmail)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Please enter a valid email address (e.g., user@example.com)'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    // Check if password is empty or too short
+    if (password.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Password cannot be empty'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    if (password.length < 8) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Password must be at least 8 characters long'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    if (gender.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please select your gender'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    // Validate weight (reasonable range: 30-300 kg)
+    final weightNum = double.tryParse(weight);
+    if (weightNum == null || weightNum < 30 || weightNum > 300) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please enter a valid weight between 30-300 kg'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    // Validate height (reasonable range: 100-250 cm)
+    final heightNum = double.tryParse(height);
+    if (heightNum == null || heightNum < 100 || heightNum > 250) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Please enter a valid height between 100-250 cm'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
+    return true;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -365,8 +489,14 @@ class _SignUpViewState extends State<SignUpView> {
                               final gender = _genderController.text;
                               final weight = _weightController.text;
                               final height = _heighttController.text;
-                              _handleSignup(context, firstname, lastname, email,
-                                  password, gender, weight, height);
+
+                              // First validate all inputs
+                              if (_validateInputs(context, firstname, lastname,
+                                  email, password, gender, weight, height)) {
+                                // Only proceed with signup if validation passes
+                                _handleSignup(context, firstname, lastname,
+                                    email, password, gender, weight, height);
+                              }
                             }),
                         SizedBox(
                           height: media.width * 0.04,

@@ -1,5 +1,5 @@
 from django.db import models
-from django.contrib.auth.models import User
+from userManagement.models import User
 from django.utils import timezone
 
 # Create your models here.
@@ -34,4 +34,4 @@ class FoodLog(models.Model):
         ordering = ['-meal_log_time']
 
     def __str__(self):
-        return f"{self.name} - {self.user.username} - {self.meal_log_time.strftime('%Y-%m-%d %H:%M')}"
+        return f"{self.name} - {self.user.UserFirstName} {self.user.UserLastName} - {self.meal_log_time.strftime('%Y-%m-%d %H:%M')}"
