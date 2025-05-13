@@ -114,16 +114,17 @@ class _MealPlannerViewState extends State<MealPlannerView>
   Future<void> fetchNutritionData(String query) async {
     if (query.isEmpty) return;
 
-    // Update currentQuery with the latest search
+    // Update currentQuery with the latest search and append "2" to get double serving
     setState(() {
-      currentQuery = query;
+      currentQuery = "2 $query"; // Append 2 to get double serving
       isLoading = true;
       nutritionData = null;
     });
 
     try {
       final response = await http.get(
-        Uri.parse('${ApiConstants.apiUrl}$query'),
+        Uri.parse(
+            '${ApiConstants.apiUrl}${currentQuery}'), // Use modified query
         headers: {
           'X-Api-Key': ApiConstants.apiKey,
           'Content-Type': 'application/json',
@@ -165,6 +166,8 @@ class _MealPlannerViewState extends State<MealPlannerView>
     }
 
     final item = data['items'][0];
+    print(
+        "Showing nutrition dialog with meal type: $selectedMealType"); // Debug log
 
     showDialog(
       context: context,
@@ -175,8 +178,10 @@ class _MealPlannerViewState extends State<MealPlannerView>
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text('Meal type: $selectedMealType'),
+              Text('Meal type: $selectedMealType',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
               SizedBox(height: 10),
+              // Text('Serving size: ${item['serving_size_g']}g'),
               Text('Calories: ${item['calories']} kCal'),
               Text('Protein: ${item['protein_g']}g'),
               Text('Carbs: ${item['carbohydrates_total_g']}g'),
@@ -191,6 +196,8 @@ class _MealPlannerViewState extends State<MealPlannerView>
           ),
           TextButton(
             onPressed: () {
+              print(
+                  "Logging meal with type: $selectedMealType"); // Debug log before logging
               Navigator.pop(context);
               _logMeal(item);
             },
@@ -211,13 +218,18 @@ class _MealPlannerViewState extends State<MealPlannerView>
       // Use the user ID from userData
       int userId = widget.userData?['UserID'] ?? 1;
 
-      print("Logging meal with category: $selectedMealType"); // Debug log
+      print("\n========== MEAL LOGGING DEBUG ==========");
+      print("Selected Meal Type: '$selectedMealType'");
+      print("Selected Meal Type Type: ${selectedMealType.runtimeType}");
+
+      // Explicitly create the category field
+      String category = selectedMealType.trim();
+      print("Processed Category: '$category'");
 
       final mealData = {
         'user_id': userId,
         'name': item['name'],
-        'category':
-            selectedMealType, // This is correct, let's check the API response
+        'category': category, // Use the processed category
         'calories': item['calories'],
         'serving_size': item['serving_size_g'],
         'protein_g': item['protein_g'],
@@ -231,7 +243,10 @@ class _MealPlannerViewState extends State<MealPlannerView>
         'cholesterol_mg': item['cholesterol_mg'],
       };
 
-      print("Sending meal data: $mealData"); // Debug log
+      print("\nRequest Details:");
+      print("URL: ${ApiConstants.baseUrl}/meals/log/");
+      print("Category in request body: '${mealData['category']}'");
+      print("Full request body: ${json.encode(mealData)}");
 
       final response = await http.post(
         Uri.parse('${ApiConstants.baseUrl}/meals/log/'),
@@ -241,26 +256,40 @@ class _MealPlannerViewState extends State<MealPlannerView>
         body: json.encode(mealData),
       );
 
-      print("Response status: ${response.statusCode}"); // Debug log
-      print("Response body: ${response.body}"); // Debug log
+      print("\nResponse Details:");
+      print("Status Code: ${response.statusCode}");
 
       setState(() {
         isLoading = false;
       });
 
       if (response.statusCode == 201) {
+        final responseData = json.decode(response.body);
+        print(
+            "Response category (if exists): ${responseData['category'] ?? 'NOT_RETURNED'}");
+        print("Full response body: ${response.body}");
+
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Meal logged successfully as $selectedMealType!')),
+          SnackBar(content: Text('Meal logged successfully as $category!')),
         );
-        // Refresh the meals data
-        fetchMealsByDate();
+
+        // Add a small delay before fetching meals to ensure the backend has processed the change
+        await Future.delayed(Duration(milliseconds: 500));
+        await fetchMealsByDate();
       } else {
+        print("Error response body: ${response.body}");
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error logging meal: ${response.body}')),
         );
       }
-    } catch (e) {
+      print("=====================================\n");
+
+      setState(() {
+        isLoading = false;
+      });
+    } catch (e, stackTrace) {
+      print("Error in _logMeal: $e");
+      print("Stack trace: $stackTrace");
       setState(() {
         isLoading = false;
       });

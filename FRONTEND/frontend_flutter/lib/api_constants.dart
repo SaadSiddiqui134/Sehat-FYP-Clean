@@ -4,7 +4,7 @@ class ApiConstants {
   static const String apiUrl =
       'https://api.calorieninjas.com/v1/nutrition?query='; // emulator
   // Change this one line to switch environments
-  static const String baseUrl = 'http://192.168.102.188:8000'; // emulator
+  static const String baseUrl = 'http://192.168.5.43:8000'; // emulator
   static final String baseUrlDevice = dotenv.env['DEVICE_IP'] ??
       'http://10.0.2.2:8000/user/login/'; // real device
 

@@ -127,6 +127,18 @@ class _SignUpViewState extends State<SignUpView> {
       String gender,
       String weight,
       String height) {
+    // Check if terms and privacy policy is accepted
+    if (!isCheck) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Please accept the Privacy Policy and Terms of Use to continue'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return false;
+    }
+
     // Validate required fields
     if (firstname.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

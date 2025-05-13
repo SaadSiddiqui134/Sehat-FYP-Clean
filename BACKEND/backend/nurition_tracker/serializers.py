@@ -16,6 +16,7 @@ class FoodLogSerializer(serializers.ModelSerializer):
             'meal_id',
             'user',
             'name',
+            'category',
             'calories',
             'serving_size',
             'protein_g',
@@ -42,6 +43,7 @@ class FoodLogCreateSerializer(serializers.ModelSerializer):
         model = FoodLog
         fields = [
             'name',
+            'category',
             'calories',
             'serving_size',
             'protein_g',
@@ -61,6 +63,7 @@ class FoodLogSummarySerializer(serializers.ModelSerializer):
         fields = [
             'meal_id',
             'name',
+            'category',
             'calories',
             'meal_log_time'
         ]    
